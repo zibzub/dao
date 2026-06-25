@@ -98,6 +98,7 @@ body {
   -webkit-tap-highlight-color: transparent;
   user-select: none;
   touch-action: manipulation;
+  position: relative;
 }
 
 .svg-animation:focus {
@@ -150,9 +151,58 @@ body {
   opacity: 1;
 }
 
+.gesture-hints {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.gesture-hint {
+  position: absolute;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 240ms ease, transform 240ms ease;
+}
+
+.gesture-hint svg {
+  width: 1.7rem;
+  height: 1.7rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.gesture-hint--top {
+  bottom: calc(100% + 8rem);
+  transform: translate(-50%, 0.4rem);
+}
+
+.gesture-hint--bottom {
+  top: calc(100% + 8rem);
+  transform: translate(-50%, -0.4rem);
+}
+
+.gesture-hints[data-visible="true"] .gesture-hint {
+  opacity: 0.8;
+  transform: translate(-50%, 0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .svg-animation__image {
     transition-duration: 1ms;
+  }
+
+  .gesture-hint {
+    transition: none;
   }
 }
 

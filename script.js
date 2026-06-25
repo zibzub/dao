@@ -3,6 +3,7 @@
     const firstImage = animation.querySelector(".svg-animation__image--first");
     const secondImage = animation.querySelector(".svg-animation__image--second");
     const soundToggle = document.querySelector(".sound-toggle");
+    const gestureHints = document.querySelector(".gesture-hints");
     let pressCount = 0;
     let animationFrame = 0;
     let isSpinning = false;
@@ -48,6 +49,8 @@
     let soundEnabled = false;
     let pulseStartTime = 0;
     let currentPulseAmount = 0;
+    let gestureHintsDismissed = false;
+    let gestureHintsVisible = false;
 
     const baseRotation = 360;
     const baseDuration = 280;
@@ -79,6 +82,7 @@
     const pulseDuration = 180;
     const pulseScaleBoost = 0.15;
     const pulseBrightnessBoost = 0.50;
+    const hintsDismissedKey = "daoGestureHintsDismissed";
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
     firstImage.src = animation.dataset.srcA;
@@ -105,6 +109,32 @@
 
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
+    }
+
+    function loadGestureHintsPreference() {
+      try {
+        gestureHintsDismissed =
+          localStorage.getItem(hintsDismissedKey) === "true";
+      } catch (error) {
+        gestureHintsDismissed = false;
+      }
+    }
+
+    function setGestureHintsVisible(visible) {
+      gestureHintsVisible = visible && !gestureHintsDismissed;
+      gestureHints.dataset.visible = String(gestureHintsVisible);
+    }
+
+    function dismissGestureHints() {
+      if (gestureHintsDismissed) return;
+
+      gestureHintsDismissed = true;
+      setGestureHintsVisible(false);
+      try {
+        localStorage.setItem(hintsDismissedKey, "true");
+      } catch (error) {
+        console.warn("Unable to save gesture hint preference.", error);
+      }
     }
 
     function ensureAudioContext() {
@@ -493,6 +523,7 @@
     }
 
     function beginLockedOverdriveFinish(time) {
+      setGestureHintsVisible(false);
       if (lockedLastFrameTime) {
         const elapsed = Math.min((time - lockedLastFrameTime) / 1000, 0.05);
         currentAngle =
@@ -526,6 +557,7 @@
     }
 
     function finishSpin() {
+      setGestureHintsVisible(false);
       pulseStartTime = 0;
       currentPulseAmount = 0;
       applyTransform(0, baseScale);
@@ -574,6 +606,7 @@
           && time - lastOverdriveTapTime >= overdriveStopArmDelay
         ) {
           overdriveStopArmed = true;
+          setGestureHintsVisible(true);
         }
         animationFrame = requestAnimationFrame(spin);
         return;
@@ -712,6 +745,7 @@
       if (distance >= lockedDragThreshold || heldLongEnough) {
         lockedPointerMoved = true;
         lockedPointerHolding = true;
+        dismissGestureHints();
       }
 
       if (!lockedPointerHolding) return;
@@ -804,3 +838,4 @@
 
     loadSoundPreference();
     updateSoundToggle();
+    loadGestureHintsPreference();

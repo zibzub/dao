@@ -44,6 +44,8 @@
     let audioContext = null;
     let masterGain = null;
     let tapSoundCount = 0;
+    let pulseStartTime = 0;
+    let currentPulseAmount = 0;
 
     const baseRotation = 360;
     const baseDuration = 280;
@@ -72,6 +74,9 @@
     const lockedFinishDuration = 1100;
     const overdriveStopArmDelay = 600;
     const baseHueDegreesPerSecond = 360 / (hueCycleDuration / 1000);
+    const pulseDuration = 180;
+    const pulseScaleBoost = 0.15;
+    const pulseBrightnessBoost = 0.50;
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
     firstImage.src = animation.dataset.srcA;
@@ -222,8 +227,36 @@
       }
     }
 
+    function getPulseProgress(time) {
+      if (!pulseStartTime) return 0;
+      return Math.min((time - pulseStartTime) / pulseDuration, 1);
+    }
+
+    function getPulseAmount(time) {
+      const progress = getPulseProgress(time);
+      if (progress >= 1) {
+        pulseStartTime = 0;
+        return 0;
+      }
+
+      return Math.sin(progress * Math.PI);
+    }
+
+    function updatePulse(time) {
+      currentPulseAmount = reducedMotion.matches ? 0 : getPulseAmount(time);
+    }
+
     function applyTransform(angle, scale) {
-      track.style.transform = `rotate(${angle}deg) scale(${scale})`;
+      const pulseScale =
+        scale * (1 + currentPulseAmount * pulseScaleBoost);
+      const pulseBrightness =
+        1 + currentPulseAmount * pulseBrightnessBoost;
+
+      track.style.transform =
+        `rotate(${angle}deg) scale(${pulseScale})`;
+      track.style.filter =
+        "drop-shadow(0 0.4rem 0.45rem rgb(0 0 0 / 65%)) "
+        + `brightness(${pulseBrightness})`;
     }
 
     function getSpinProgress(time) {
@@ -452,6 +485,8 @@
     }
 
     function finishSpin() {
+      pulseStartTime = 0;
+      currentPulseAmount = 0;
       applyTransform(0, baseScale);
       resetColorOverlay();
       currentAngle = 0;
@@ -490,6 +525,7 @@
         currentAngle =
           (currentAngle + lockedActiveSpinSpeed * elapsed) % baseRotation;
         currentScale = maxScale;
+        updatePulse(time);
         applyTransform(currentAngle, currentScale);
         updateColorOverlay(time);
         if (
@@ -506,6 +542,7 @@
       currentAngle = spinStartAngle
         + (spinTargetAngle - spinStartAngle) * easeOutCubic(progress);
       currentScale = getScaleAtTime(time);
+      updatePulse(time);
       applyTransform(currentAngle, currentScale);
       updateColorOverlay(time);
 
@@ -692,10 +729,21 @@
       overdriveStopArmed = true;
     }
 
+    function handleOutsidePointerDown(event) {
+      if (!lockedOverdrive || finishingLockedOverdrive) return;
+      if (animation.contains(event.target)) return;
+
+      playTapSound();
+      if (!reducedMotion.matches) {
+        pulseStartTime = performance.now();
+      }
+    }
+
     animation.addEventListener("pointerdown", handlePointerDown);
     animation.addEventListener("pointermove", handlePointerMove);
     animation.addEventListener("pointerup", handlePointerUp);
     animation.addEventListener("pointercancel", handlePointerCancel);
+    document.addEventListener("pointerdown", handleOutsidePointerDown);
     animation.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>MoonCat DAO SVG Animation Demo</title>
+  <title>tao</title>
   <style>
     :root {
       color-scheme: dark;
@@ -164,6 +164,9 @@
     let lockedPointerStartHueSpeed = 1;
     let lockedPointerMoved = false;
     let lockedPointerHolding = false;
+    let audioContext = null;
+    let masterGain = null;
+    let tapSoundCount = 0;
 
     const baseRotation = 360;
     const baseDuration = 280;
@@ -218,6 +221,128 @@
 
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
+    }
+
+    function ensureAudioContext() {
+      if (!audioContext) {
+        const AudioContext =
+          window.AudioContext || window.webkitAudioContext;
+        audioContext = new AudioContext();
+        masterGain = audioContext.createGain();
+        masterGain.gain.value = 0.8;
+        masterGain.connect(audioContext.destination);
+      }
+
+      if (audioContext.state === "suspended") {
+        audioContext.resume();
+      }
+    }
+
+    function playKick() {
+      try {
+        ensureAudioContext();
+
+        const now = audioContext.currentTime;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(60, now);
+        oscillator.frequency.exponentialRampToValueAtTime(45, now + 0.09);
+
+        gain.gain.setValueAtTime(0.9, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        oscillator.connect(gain);
+        gain.connect(masterGain);
+        oscillator.start(now);
+        oscillator.stop(now + 0.2);
+      } catch (error) {
+        console.warn("Unable to play kick sound.", error);
+      }
+    }
+
+    function playKick2() {
+      try {
+        ensureAudioContext();
+
+        const now = audioContext.currentTime;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+
+        oscillator.type = "sine";
+        oscillator.frequency.setValueAtTime(120, now);
+        oscillator.frequency.exponentialRampToValueAtTime(45, now + 0.09);
+
+        gain.gain.setValueAtTime(0.9, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+
+        oscillator.connect(gain);
+        gain.connect(masterGain);
+        oscillator.start(now);
+        oscillator.stop(now + 0.2);
+      } catch (error) {
+        console.warn("Unable to play kick2 sound.", error);
+      }
+    }
+
+    function playSnare() {
+      try {
+        ensureAudioContext();
+
+        const now = audioContext.currentTime;
+        const bufferSize = Math.floor(audioContext.sampleRate * 0.18);
+        const noiseBuffer = audioContext.createBuffer(
+          1,
+          bufferSize,
+          audioContext.sampleRate
+        );
+        const output = noiseBuffer.getChannelData(0);
+
+        for (let index = 0; index < bufferSize; index += 1) {
+          output[index] = Math.random() * 2 - 1;
+        }
+
+        const noise = audioContext.createBufferSource();
+        const noiseFilter = audioContext.createBiquadFilter();
+        const noiseGain = audioContext.createGain();
+        noise.buffer = noiseBuffer;
+        noiseFilter.type = "highpass";
+        noiseFilter.frequency.setValueAtTime(900, now);
+        noiseGain.gain.setValueAtTime(0.45, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
+
+        noise.connect(noiseFilter);
+        noiseFilter.connect(noiseGain);
+        noiseGain.connect(masterGain);
+
+        const body = audioContext.createOscillator();
+        const bodyGain = audioContext.createGain();
+        body.type = "triangle";
+        body.frequency.setValueAtTime(100, now);
+        bodyGain.gain.setValueAtTime(0.18, now);
+        bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+
+        body.connect(bodyGain);
+        bodyGain.connect(masterGain);
+
+        noise.start(now);
+        noise.stop(now + 0.18);
+        body.start(now);
+        body.stop(now + 0.09);
+      } catch (error) {
+        console.warn("Unable to play snare sound.", error);
+      }
+    }
+
+    function playTapSound() {
+      tapSoundCount += 1;
+
+      if (tapSoundCount % 2 === 1) {
+        playKick();
+      } else {
+        playKick2();
+      }
     }
 
     function applyTransform(angle, scale) {
@@ -601,6 +726,8 @@
     }
 
     function handlePointerDown(event) {
+      playTapSound();
+
       if (!lockedOverdrive) {
         animate(event.pointerType);
         return;
@@ -695,6 +822,7 @@
     animation.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
+        playTapSound();
         animate("keyboard");
       }
     });

@@ -152,6 +152,18 @@
     let overdriveStopArmed = false;
     let lastOverdriveTapTime = 0;
     let activeRapidClickWindow = 220;
+    let lockedActiveSpinSpeed = 1080;
+    let hueCycleSpeed = 1;
+    let currentHue = 0;
+    let colorLastFrameTime = 0;
+    let lockedPointerId = null;
+    let lockedPointerStartX = 0;
+    let lockedPointerStartY = 0;
+    let lockedPointerStartTime = 0;
+    let lockedPointerStartSpinSpeed = 1080;
+    let lockedPointerStartHueSpeed = 1;
+    let lockedPointerMoved = false;
+    let lockedPointerHolding = false;
 
     const baseRotation = 360;
     const baseDuration = 280;
@@ -169,8 +181,17 @@
     const overlayFadeDuration = 350;
     const overlayMaxOpacity = 0.45;
     const lockedSpinSpeed = 1080;
+    const minLockedSpinSpeed = 540;
+    const maxLockedSpinSpeed = 4320;
+    const minHueCycleSpeed = 0.25;
+    const maxHueCycleSpeed = 4;
+    const lockedHoldThreshold = 300;
+    const lockedDragThreshold = 8;
+    const spinSpeedDragRange = 180;
+    const hueSpeedDragRange = 180;
     const lockedFinishDuration = 1100;
     const overdriveStopArmDelay = 600;
+    const baseHueDegreesPerSecond = 360 / (hueCycleDuration / 1000);
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
     firstImage.src = animation.dataset.srcA;
@@ -193,6 +214,10 @@
 
     function easeOutCubic(progress) {
       return 1 - Math.pow(1 - progress, 3);
+    }
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
     }
 
     function applyTransform(angle, scale) {
@@ -256,10 +281,22 @@
       return getScaleAtTime(time);
     }
 
-    function applyColorOverlay(time) {
-      const hue =
-        ((time - colorOverlayStartTime) / hueCycleDuration * 360) % 360;
-      colorOverlay.style.backgroundColor = `hsl(${hue}, 100%, 45%)`;
+    function advanceHue(time) {
+      if (!colorLastFrameTime) {
+        colorLastFrameTime = time;
+        return;
+      }
+
+      const elapsed = Math.min((time - colorLastFrameTime) / 1000, 0.05);
+      colorLastFrameTime = time;
+      currentHue =
+        (currentHue
+          + baseHueDegreesPerSecond * hueCycleSpeed * elapsed) % 360;
+    }
+
+    function applyColorOverlay() {
+      colorOverlay.style.backgroundColor =
+        `hsl(${currentHue}, 100%, 45%)`;
       colorOverlay.style.opacity = colorOverlayOpacity;
     }
 
@@ -276,17 +313,19 @@
 
     function updateColorOverlay(time) {
       if (lockedOverdrive) {
+        advanceHue(time);
         const fadeInProgress = Math.min(
           (time - colorOverlayStartTime) / overlayFadeDuration,
           1
         );
         colorOverlayOpacity =
           overlayMaxOpacity * easeOutCubic(fadeInProgress);
-        applyColorOverlay(time);
+        applyColorOverlay();
         return;
       }
 
       if (finishingLockedOverdrive) {
+        advanceHue(time);
         if (overlayFadeStartTime) {
           const fadeOutProgress = Math.min(
             (time - overlayFadeStartTime) / overlayFadeDuration,
@@ -297,7 +336,7 @@
         } else {
           colorOverlayOpacity = 0;
         }
-        applyColorOverlay(time);
+        applyColorOverlay();
         return;
       }
 
@@ -324,7 +363,12 @@
       ) {
         colorOverlayActive = true;
         colorOverlayStartTime = time;
+        currentHue = 0;
+        colorLastFrameTime = time;
+        lockedActiveSpinSpeed = lockedSpinSpeed;
+        hueCycleSpeed = 1;
         lockedOverdrive = true;
+        animation.style.touchAction = "none";
         lockedLastFrameTime = time;
         lastOverdriveTapTime = time;
         overdriveStopArmed = false;
@@ -354,7 +398,7 @@
         colorOverlayOpacity = 0;
       }
 
-      applyColorOverlay(time);
+      applyColorOverlay();
     }
 
     function resetColorOverlay() {
@@ -365,6 +409,9 @@
       colorOverlayOpacity = 0;
       overlayFadeStartTime = 0;
       overlayFadeStartOpacity = 0;
+      currentHue = 0;
+      colorLastFrameTime = 0;
+      hueCycleSpeed = 1;
       colorOverlay.style.opacity = 0;
       colorOverlay.style.backgroundColor = "";
     }
@@ -373,7 +420,7 @@
       if (lockedLastFrameTime) {
         const elapsed = Math.min((time - lockedLastFrameTime) / 1000, 0.05);
         currentAngle =
-          (currentAngle + lockedSpinSpeed * elapsed) % baseRotation;
+          (currentAngle + lockedActiveSpinSpeed * elapsed) % baseRotation;
       }
 
       cancelAnimationFrame(animationFrame);
@@ -389,6 +436,17 @@
       isSpinning = true;
       beginOverlayFade(time);
       animationFrame = requestAnimationFrame(spin);
+    }
+
+    function resetLockedPointer() {
+      lockedPointerId = null;
+      lockedPointerStartX = 0;
+      lockedPointerStartY = 0;
+      lockedPointerStartTime = 0;
+      lockedPointerStartSpinSpeed = lockedSpinSpeed;
+      lockedPointerStartHueSpeed = 1;
+      lockedPointerMoved = false;
+      lockedPointerHolding = false;
     }
 
     function finishSpin() {
@@ -413,6 +471,12 @@
       overdriveStopArmed = false;
       lastOverdriveTapTime = 0;
       activeRapidClickWindow = rapidClickWindowTouch;
+      lockedActiveSpinSpeed = lockedSpinSpeed;
+      hueCycleSpeed = 1;
+      currentHue = 0;
+      colorLastFrameTime = 0;
+      resetLockedPointer();
+      animation.style.touchAction = "";
     }
 
     function spin(time) {
@@ -422,7 +486,7 @@
           : 0;
         lockedLastFrameTime = time;
         currentAngle =
-          (currentAngle + lockedSpinSpeed * elapsed) % baseRotation;
+          (currentAngle + lockedActiveSpinSpeed * elapsed) % baseRotation;
         currentScale = maxScale;
         applyTransform(currentAngle, currentScale);
         updateColorOverlay(time);
@@ -456,10 +520,14 @@
       animationFrame = requestAnimationFrame(spin);
     }
 
-    function animate(pointerType = "keyboard") {
+    function toggleImage() {
       pressCount += 1;
       animation.dataset.visibleImage =
         pressCount % 2 === 0 ? "first" : "second";
+    }
+
+    function animate(pointerType = "keyboard") {
+      toggleImage();
 
       if (reducedMotion.matches) return;
 
@@ -532,9 +600,98 @@
       animationFrame = requestAnimationFrame(spin);
     }
 
-    animation.addEventListener("pointerdown", (event) => {
-      animate(event.pointerType);
-    });
+    function handlePointerDown(event) {
+      if (!lockedOverdrive) {
+        animate(event.pointerType);
+        return;
+      }
+
+      toggleImage();
+      lockedPointerId = event.pointerId;
+      lockedPointerStartX = event.clientX;
+      lockedPointerStartY = event.clientY;
+      lockedPointerStartTime = performance.now();
+      lockedPointerStartSpinSpeed = lockedActiveSpinSpeed;
+      lockedPointerStartHueSpeed = hueCycleSpeed;
+      lockedPointerMoved = false;
+      lockedPointerHolding = false;
+      animation.setPointerCapture(event.pointerId);
+    }
+
+    function handlePointerMove(event) {
+      if (!lockedOverdrive || event.pointerId !== lockedPointerId) return;
+
+      const dx = event.clientX - lockedPointerStartX;
+      const dy = event.clientY - lockedPointerStartY;
+      const distance = Math.hypot(dx, dy);
+      const heldLongEnough =
+        performance.now() - lockedPointerStartTime >= lockedHoldThreshold;
+
+      if (distance >= lockedDragThreshold || heldLongEnough) {
+        lockedPointerMoved = true;
+        lockedPointerHolding = true;
+      }
+
+      if (!lockedPointerHolding) return;
+
+      lockedActiveSpinSpeed = clamp(
+        lockedPointerStartSpinSpeed
+          + (-dy / spinSpeedDragRange)
+            * (maxLockedSpinSpeed - minLockedSpinSpeed),
+        minLockedSpinSpeed,
+        maxLockedSpinSpeed
+      );
+      hueCycleSpeed = clamp(
+        lockedPointerStartHueSpeed
+          + (dx / hueSpeedDragRange)
+            * (maxHueCycleSpeed - minHueCycleSpeed),
+        minHueCycleSpeed,
+        maxHueCycleSpeed
+      );
+      lastOverdriveTapTime = performance.now();
+      overdriveStopArmed = false;
+    }
+
+    function releasePointerCapture(pointerId) {
+      if (animation.hasPointerCapture(pointerId)) {
+        animation.releasePointerCapture(pointerId);
+      }
+    }
+
+    function handlePointerUp(event) {
+      if (!lockedOverdrive || event.pointerId !== lockedPointerId) return;
+
+      const releaseTime = performance.now();
+      const pressDuration = releaseTime - lockedPointerStartTime;
+      const isShortTap =
+        pressDuration < lockedHoldThreshold && !lockedPointerMoved;
+      const shouldStop = isShortTap && overdriveStopArmed;
+
+      releasePointerCapture(event.pointerId);
+      resetLockedPointer();
+
+      if (shouldStop) {
+        beginLockedOverdriveFinish(releaseTime);
+        return;
+      }
+
+      lastOverdriveTapTime = releaseTime;
+      overdriveStopArmed = !isShortTap;
+    }
+
+    function handlePointerCancel(event) {
+      if (event.pointerId !== lockedPointerId) return;
+
+      releasePointerCapture(event.pointerId);
+      resetLockedPointer();
+      lastOverdriveTapTime = performance.now();
+      overdriveStopArmed = true;
+    }
+
+    animation.addEventListener("pointerdown", handlePointerDown);
+    animation.addEventListener("pointermove", handlePointerMove);
+    animation.addEventListener("pointerup", handlePointerUp);
+    animation.addEventListener("pointercancel", handlePointerCancel);
     animation.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();

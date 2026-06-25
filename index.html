@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoonCat DAO SVG Animation Demo</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, sans-serif;
+      background: #262626;
+      color: #f5f5f5;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+    }
+
+    /*
+      Reusable SVG animation component.
+      Override --asset-size or --fade-duration
+      on .svg-animation to tune each instance.
+    */
+    .svg-animation {
+      --asset-size: 220px;
+      --fade-duration: 0.25s;
+
+      width: var(--asset-size);
+      height: var(--asset-size);
+      cursor: pointer;
+      outline-offset: 0.5rem;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    .svg-animation:focus {
+      outline: none;
+    }
+
+    .svg-animation:focus-visible {
+      outline: 2px solid currentColor;
+    }
+
+    .svg-animation__track {
+      display: grid;
+      width: var(--asset-size);
+      height: var(--asset-size);
+      transform-origin: center;
+      filter: drop-shadow(0 0.4rem 0.45rem rgb(0 0 0 / 65%));
+      will-change: transform;
+    }
+
+    .svg-animation__image {
+      grid-area: 1 / 1;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      image-rendering: pixelated;
+      transition: opacity var(--fade-duration) ease-in-out;
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-drag: none;
+    }
+
+    .svg-animation__image--second {
+      opacity: 0;
+    }
+
+    .svg-animation[data-visible-image="second"] .svg-animation__image--first {
+      opacity: 0;
+    }
+
+    .svg-animation[data-visible-image="second"] .svg-animation__image--second {
+      opacity: 1;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .svg-animation__image {
+        transition-duration: 1ms;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div
+    class="svg-animation"
+    data-src-a="img/dao-logo.svg"
+    data-src-b="img/dao-logo_inv.svg"
+    role="button"
+    tabindex="0"
+    aria-label="Animate MoonCat DAO logo"
+  >
+    <div class="svg-animation__track">
+      <img class="svg-animation__image svg-animation__image--first" alt="MoonCat DAO logo">
+      <img class="svg-animation__image svg-animation__image--second" alt="" aria-hidden="true">
+    </div>
+  </div>
+
+  <script>
+    const animation = document.querySelector(".svg-animation");
+    const track = animation.querySelector(".svg-animation__track");
+    const firstImage = animation.querySelector(".svg-animation__image--first");
+    const secondImage = animation.querySelector(".svg-animation__image--second");
+    let pressCount = 0;
+    let animationFrame = 0;
+    let isSpinning = false;
+    let spinStartTime = 0;
+    let spinStartAngle = 0;
+    let spinTargetAngle = 0;
+    let spinDuration = 0;
+    let lastPressTime = 0;
+    let rapidMomentumLevel = 0;
+    let currentAngle = 0;
+
+    const baseRotation = 360;
+    const baseDuration = 280;
+    const rapidClickWindow = 220;
+    const extraRotationPerRapidClick = 360;
+    const extraDurationPerRapidClick = 120;
+    const maxExtraRotations = 8;
+    const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
+
+    firstImage.src = animation.dataset.srcA;
+    secondImage.src = animation.dataset.srcB;
+
+    function easeOutCubic(progress) {
+      return 1 - Math.pow(1 - progress, 3);
+    }
+
+    function getCurrentAngle(time) {
+      if (!isSpinning || !spinDuration) return currentAngle;
+
+      const progress = Math.min((time - spinStartTime) / spinDuration, 1);
+      return spinStartAngle
+        + (spinTargetAngle - spinStartAngle) * easeOutCubic(progress);
+    }
+
+    function finishSpin() {
+      track.style.transform = "rotate(0deg)";
+      currentAngle = 0;
+      animationFrame = 0;
+      isSpinning = false;
+      spinStartTime = 0;
+      spinStartAngle = 0;
+      spinTargetAngle = 0;
+      spinDuration = 0;
+      lastPressTime = 0;
+      rapidMomentumLevel = 0;
+    }
+
+    function spin(time) {
+      const progress = Math.min((time - spinStartTime) / spinDuration, 1);
+      currentAngle = spinStartAngle
+        + (spinTargetAngle - spinStartAngle) * easeOutCubic(progress);
+      track.style.transform = `rotate(${currentAngle}deg)`;
+
+      if (progress >= 1) {
+        finishSpin();
+        return;
+      }
+
+      animationFrame = requestAnimationFrame(spin);
+    }
+
+    function animate() {
+      pressCount += 1;
+      animation.dataset.visibleImage =
+        pressCount % 2 === 0 ? "first" : "second";
+
+      if (reducedMotion.matches) return;
+
+      const pressTime = performance.now();
+      const isRapidPress =
+        isSpinning && pressTime - lastPressTime <= rapidClickWindow;
+
+      if (isSpinning) {
+        currentAngle = getCurrentAngle(pressTime);
+        cancelAnimationFrame(animationFrame);
+        spinStartAngle = currentAngle;
+
+        if (isRapidPress) {
+          rapidMomentumLevel = Math.min(
+            rapidMomentumLevel + 1,
+            maxExtraRotations
+          );
+        } else {
+          rapidMomentumLevel = 0;
+        }
+      } else {
+        currentAngle = 0;
+        spinStartAngle = 0;
+        rapidMomentumLevel = 0;
+      }
+
+      const nextFullRotation =
+        Math.ceil(spinStartAngle / baseRotation) * baseRotation;
+      spinTargetAngle = isRapidPress
+        ? nextFullRotation
+          + extraRotationPerRapidClick * rapidMomentumLevel
+        : nextFullRotation + baseRotation;
+      spinDuration = baseDuration
+        + extraDurationPerRapidClick * rapidMomentumLevel;
+      spinStartTime = pressTime;
+      lastPressTime = pressTime;
+      isSpinning = true;
+      animationFrame = requestAnimationFrame(spin);
+    }
+
+    animation.addEventListener("click", animate);
+    animation.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        animate();
+      }
+    });
+  </script>
+</body>
+</html>

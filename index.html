@@ -16,11 +16,18 @@
       box-sizing: border-box;
     }
 
+    html {
+      overflow: hidden;
+    }
+
     body {
-      min-height: 100vh;
+      width: 100vw;
+      height: 100dvh;
       margin: 0;
       display: grid;
       place-items: center;
+      overflow: hidden;
+      overscroll-behavior: none;
     }
 
     /*
@@ -119,13 +126,21 @@
     let lastPressTime = 0;
     let rapidMomentumLevel = 0;
     let currentAngle = 0;
+    let currentScale = 1;
+    let spinStartScale = 1;
+    let maxMomentumReached = false;
+    let maxMomentumReachedTime = 0;
 
     const baseRotation = 360;
     const baseDuration = 280;
     const rapidClickWindow = 220;
     const extraRotationPerRapidClick = 360;
     const extraDurationPerRapidClick = 120;
-    const maxExtraRotations = 8;
+    const maxExtraRotations =16;
+    const baseScale = 1;
+    const maxScale = 1.5;
+    const scalePeakProgress = 0.35;
+    const scaleGrowDuration = 900;
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
     firstImage.src = animation.dataset.srcA;
@@ -135,17 +150,65 @@
       return 1 - Math.pow(1 - progress, 3);
     }
 
+    function applyTransform(angle, scale) {
+      track.style.transform = `rotate(${angle}deg) scale(${scale})`;
+    }
+
+    function getSpinProgress(time) {
+      if (!isSpinning || !spinDuration) return 0;
+      return Math.min((time - spinStartTime) / spinDuration, 1);
+    }
+
     function getCurrentAngle(time) {
       if (!isSpinning || !spinDuration) return currentAngle;
 
-      const progress = Math.min((time - spinStartTime) / spinDuration, 1);
+      const progress = getSpinProgress(time);
       return spinStartAngle
         + (spinTargetAngle - spinStartAngle) * easeOutCubic(progress);
     }
 
+    function getMomentumScale(time) {
+      if (!maxMomentumReached) return baseScale;
+
+      const scaleGrowProgress = Math.min(
+        Math.max((time - maxMomentumReachedTime) / scaleGrowDuration, 0),
+        1
+      );
+      return baseScale
+        + (maxScale - baseScale) * easeOutCubic(scaleGrowProgress);
+    }
+
+    function getScaleAtTime(time) {
+      if (!maxMomentumReached) return baseScale;
+
+      const progress = getSpinProgress(time);
+      if (progress < scalePeakProgress) {
+        const growProgress = progress / scalePeakProgress;
+        return spinStartScale
+          + (getMomentumScale(time) - spinStartScale)
+            * easeOutCubic(growProgress);
+      }
+
+      const peakTime = spinStartTime + spinDuration * scalePeakProgress;
+      const segmentPeakScale = Math.max(
+        spinStartScale,
+        getMomentumScale(peakTime)
+      );
+      const shrinkProgress =
+        (progress - scalePeakProgress) / (1 - scalePeakProgress);
+      return segmentPeakScale
+        + (baseScale - segmentPeakScale) * easeOutCubic(shrinkProgress);
+    }
+
+    function getCurrentScale(time) {
+      if (!isSpinning || !spinDuration) return currentScale;
+      return getScaleAtTime(time);
+    }
+
     function finishSpin() {
-      track.style.transform = "rotate(0deg)";
+      applyTransform(0, baseScale);
       currentAngle = 0;
+      currentScale = baseScale;
       animationFrame = 0;
       isSpinning = false;
       spinStartTime = 0;
@@ -154,13 +217,17 @@
       spinDuration = 0;
       lastPressTime = 0;
       rapidMomentumLevel = 0;
+      spinStartScale = baseScale;
+      maxMomentumReached = false;
+      maxMomentumReachedTime = 0;
     }
 
     function spin(time) {
-      const progress = Math.min((time - spinStartTime) / spinDuration, 1);
+      const progress = getSpinProgress(time);
       currentAngle = spinStartAngle
         + (spinTargetAngle - spinStartAngle) * easeOutCubic(progress);
-      track.style.transform = `rotate(${currentAngle}deg)`;
+      currentScale = getScaleAtTime(time);
+      applyTransform(currentAngle, currentScale);
 
       if (progress >= 1) {
         finishSpin();
@@ -183,21 +250,34 @@
 
       if (isSpinning) {
         currentAngle = getCurrentAngle(pressTime);
+        currentScale = getCurrentScale(pressTime);
         cancelAnimationFrame(animationFrame);
         spinStartAngle = currentAngle;
+        spinStartScale = currentScale;
 
         if (isRapidPress) {
           rapidMomentumLevel = Math.min(
             rapidMomentumLevel + 1,
             maxExtraRotations
           );
+          if (
+            rapidMomentumLevel === maxExtraRotations
+            && !maxMomentumReached
+          ) {
+            maxMomentumReached = true;
+            maxMomentumReachedTime = pressTime;
+          }
         } else {
           rapidMomentumLevel = 0;
         }
       } else {
         currentAngle = 0;
+        currentScale = baseScale;
         spinStartAngle = 0;
+        spinStartScale = baseScale;
         rapidMomentumLevel = 0;
+        maxMomentumReached = false;
+        maxMomentumReachedTime = 0;
       }
 
       const nextFullRotation =

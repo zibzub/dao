@@ -2,6 +2,7 @@
     const track = animation.querySelector(".svg-animation__track");
     const firstImage = animation.querySelector(".svg-animation__image--first");
     const secondImage = animation.querySelector(".svg-animation__image--second");
+    const soundToggle = document.querySelector(".sound-toggle");
     let pressCount = 0;
     let animationFrame = 0;
     let isSpinning = false;
@@ -44,6 +45,7 @@
     let audioContext = null;
     let masterGain = null;
     let tapSoundCount = 0;
+    let soundEnabled = false;
     let pulseStartTime = 0;
     let currentPulseAmount = 0;
 
@@ -117,6 +119,43 @@
 
       if (audioContext.state === "suspended") {
         audioContext.resume();
+      }
+    }
+
+    function loadSoundPreference() {
+      soundEnabled = false;
+    }
+
+    function saveSoundPreference() {
+      try {
+        localStorage.setItem("daoSoundEnabled", String(soundEnabled));
+      } catch (error) {
+        console.warn("Unable to save sound preference.", error);
+      }
+    }
+
+    function updateSoundToggle() {
+      soundToggle.setAttribute("aria-pressed", String(soundEnabled));
+      soundToggle.setAttribute(
+        "aria-label",
+        soundEnabled ? "Turn sound off" : "Turn sound on"
+      );
+    }
+
+    function primeAudio() {
+      try {
+        ensureAudioContext();
+
+        const now = audioContext.currentTime;
+        const oscillator = audioContext.createOscillator();
+        const gain = audioContext.createGain();
+        gain.gain.setValueAtTime(0, now);
+        oscillator.connect(gain);
+        gain.connect(masterGain);
+        oscillator.start(now);
+        oscillator.stop(now + 0.01);
+      } catch (error) {
+        console.warn("Unable to prime audio.", error);
       }
     }
 
@@ -218,6 +257,8 @@
     }
 
     function playTapSound() {
+      if (!soundEnabled) return;
+
       tapSoundCount += 1;
 
       if (tapSoundCount % 2 === 1) {
@@ -731,6 +772,7 @@
 
     function handleOutsidePointerDown(event) {
       if (!lockedOverdrive || finishingLockedOverdrive) return;
+      if (event.target.closest(".corner-control")) return;
       if (animation.contains(event.target)) return;
 
       playTapSound();
@@ -744,6 +786,14 @@
     animation.addEventListener("pointerup", handlePointerUp);
     animation.addEventListener("pointercancel", handlePointerCancel);
     document.addEventListener("pointerdown", handleOutsidePointerDown);
+    soundToggle.addEventListener("click", () => {
+      soundEnabled = !soundEnabled;
+      saveSoundPreference();
+      updateSoundToggle();
+      if (soundEnabled) {
+        primeAudio();
+      }
+    });
     animation.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
@@ -751,3 +801,6 @@
         animate("keyboard");
       }
     });
+
+    loadSoundPreference();
+    updateSoundToggle();

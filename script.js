@@ -55,7 +55,7 @@
     const extraDurationPerRapidClick = 120;
     const maxExtraRotations =16;
     const baseScale = 1;
-    const maxScale = 1.5;
+    const maxScale = 1.4;
     const scalePeakProgress = 0.35;
     const scaleGrowDuration = 900;
     const colorOverlayDelay = 3000;

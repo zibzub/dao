@@ -81,6 +81,15 @@
       opacity: 0;
     }
 
+    .svg-animation__color-overlay {
+      grid-area: 1 / 1;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      opacity: 0;
+      mix-blend-mode: color;
+    }
+
     .svg-animation[data-visible-image="second"] .svg-animation__image--first {
       opacity: 0;
     }
@@ -130,10 +139,24 @@
     let spinStartScale = 1;
     let maxMomentumReached = false;
     let maxMomentumReachedTime = 0;
+    let maxScaleReachedTime = 0;
+    let colorOverlayArmed = false;
+    let colorOverlayActive = false;
+    let colorOverlayStartTime = 0;
+    let colorOverlayOpacity = 0;
+    let overlayFadeStartTime = 0;
+    let overlayFadeStartOpacity = 0;
+    let lockedOverdrive = false;
+    let finishingLockedOverdrive = false;
+    let lockedLastFrameTime = 0;
+    let overdriveStopArmed = false;
+    let lastOverdriveTapTime = 0;
+    let activeRapidClickWindow = 220;
 
     const baseRotation = 360;
     const baseDuration = 280;
-    const rapidClickWindow = 220;
+    const rapidClickWindowTouch = 220;
+    const rapidClickWindowMouse = 420;
     const extraRotationPerRapidClick = 360;
     const extraDurationPerRapidClick = 120;
     const maxExtraRotations =16;
@@ -141,10 +164,32 @@
     const maxScale = 1.5;
     const scalePeakProgress = 0.35;
     const scaleGrowDuration = 900;
+    const colorOverlayDelay = 3000;
+    const hueCycleDuration = 20000;
+    const overlayFadeDuration = 350;
+    const overlayMaxOpacity = 0.45;
+    const lockedSpinSpeed = 1080;
+    const lockedFinishDuration = 1100;
+    const overdriveStopArmDelay = 600;
     const reducedMotion = matchMedia("(prefers-reduced-motion: reduce)");
 
     firstImage.src = animation.dataset.srcA;
     secondImage.src = animation.dataset.srcB;
+
+    const colorOverlay = document.createElement("div");
+    colorOverlay.className = "svg-animation__color-overlay";
+    colorOverlay.setAttribute("aria-hidden", "true");
+    colorOverlay.style.maskImage =
+      `url("${animation.dataset.srcA}")`;
+    colorOverlay.style.webkitMaskImage =
+      `url("${animation.dataset.srcA}")`;
+    colorOverlay.style.maskPosition = "center";
+    colorOverlay.style.webkitMaskPosition = "center";
+    colorOverlay.style.maskRepeat = "no-repeat";
+    colorOverlay.style.webkitMaskRepeat = "no-repeat";
+    colorOverlay.style.maskSize = "contain";
+    colorOverlay.style.webkitMaskSize = "contain";
+    track.append(colorOverlay);
 
     function easeOutCubic(progress) {
       return 1 - Math.pow(1 - progress, 3);
@@ -179,6 +224,12 @@
     }
 
     function getScaleAtTime(time) {
+      if (finishingLockedOverdrive) {
+        const progress = getSpinProgress(time);
+        return spinStartScale
+          + (baseScale - spinStartScale) * easeOutCubic(progress);
+      }
+
       if (!maxMomentumReached) return baseScale;
 
       const progress = getSpinProgress(time);
@@ -205,8 +256,144 @@
       return getScaleAtTime(time);
     }
 
+    function applyColorOverlay(time) {
+      const hue =
+        ((time - colorOverlayStartTime) / hueCycleDuration * 360) % 360;
+      colorOverlay.style.backgroundColor = `hsl(${hue}, 100%, 45%)`;
+      colorOverlay.style.opacity = colorOverlayOpacity;
+    }
+
+    function beginOverlayFade(time) {
+      if (overlayFadeStartTime) return;
+      colorOverlayActive = false;
+      if (!colorOverlayOpacity) {
+        colorOverlay.style.opacity = 0;
+        return;
+      }
+      overlayFadeStartTime = time;
+      overlayFadeStartOpacity = colorOverlayOpacity;
+    }
+
+    function updateColorOverlay(time) {
+      if (lockedOverdrive) {
+        const fadeInProgress = Math.min(
+          (time - colorOverlayStartTime) / overlayFadeDuration,
+          1
+        );
+        colorOverlayOpacity =
+          overlayMaxOpacity * easeOutCubic(fadeInProgress);
+        applyColorOverlay(time);
+        return;
+      }
+
+      if (finishingLockedOverdrive) {
+        if (overlayFadeStartTime) {
+          const fadeOutProgress = Math.min(
+            (time - overlayFadeStartTime) / overlayFadeDuration,
+            1
+          );
+          colorOverlayOpacity =
+            overlayFadeStartOpacity * (1 - easeOutCubic(fadeOutProgress));
+        } else {
+          colorOverlayOpacity = 0;
+        }
+        applyColorOverlay(time);
+        return;
+      }
+
+      const sustainedOverdrive =
+        maxMomentumReached
+        && rapidMomentumLevel === maxExtraRotations
+        && time - lastPressTime <= activeRapidClickWindow;
+
+      if (
+        sustainedOverdrive
+        && !maxScaleReachedTime
+        && currentScale >= maxScale - 0.01
+      ) {
+        maxScaleReachedTime = time;
+        colorOverlayArmed = true;
+      }
+
+      if (
+        colorOverlayArmed
+        && !colorOverlayActive
+        && !overlayFadeStartTime
+        && sustainedOverdrive
+        && time - maxScaleReachedTime >= colorOverlayDelay
+      ) {
+        colorOverlayActive = true;
+        colorOverlayStartTime = time;
+        lockedOverdrive = true;
+        lockedLastFrameTime = time;
+        lastOverdriveTapTime = time;
+        overdriveStopArmed = false;
+        currentScale = maxScale;
+        applyTransform(currentAngle, currentScale);
+      }
+
+      if (!sustainedOverdrive) {
+        beginOverlayFade(time);
+      }
+
+      if (colorOverlayActive) {
+        const fadeInProgress = Math.min(
+          (time - colorOverlayStartTime) / overlayFadeDuration,
+          1
+        );
+        colorOverlayOpacity =
+          overlayMaxOpacity * easeOutCubic(fadeInProgress);
+      } else if (overlayFadeStartTime) {
+        const fadeOutProgress = Math.min(
+          (time - overlayFadeStartTime) / overlayFadeDuration,
+          1
+        );
+        colorOverlayOpacity =
+          overlayFadeStartOpacity * (1 - easeOutCubic(fadeOutProgress));
+      } else {
+        colorOverlayOpacity = 0;
+      }
+
+      applyColorOverlay(time);
+    }
+
+    function resetColorOverlay() {
+      maxScaleReachedTime = 0;
+      colorOverlayArmed = false;
+      colorOverlayActive = false;
+      colorOverlayStartTime = 0;
+      colorOverlayOpacity = 0;
+      overlayFadeStartTime = 0;
+      overlayFadeStartOpacity = 0;
+      colorOverlay.style.opacity = 0;
+      colorOverlay.style.backgroundColor = "";
+    }
+
+    function beginLockedOverdriveFinish(time) {
+      if (lockedLastFrameTime) {
+        const elapsed = Math.min((time - lockedLastFrameTime) / 1000, 0.05);
+        currentAngle =
+          (currentAngle + lockedSpinSpeed * elapsed) % baseRotation;
+      }
+
+      cancelAnimationFrame(animationFrame);
+      lockedOverdrive = false;
+      finishingLockedOverdrive = true;
+      lockedLastFrameTime = 0;
+      spinStartTime = time;
+      spinStartAngle = currentAngle;
+      spinStartScale = currentScale;
+      spinTargetAngle =
+        Math.ceil(currentAngle / baseRotation) * baseRotation + baseRotation;
+      spinDuration = lockedFinishDuration;
+      isSpinning = true;
+      beginOverlayFade(time);
+      animationFrame = requestAnimationFrame(spin);
+    }
+
     function finishSpin() {
       applyTransform(0, baseScale);
+      resetColorOverlay();
       currentAngle = 0;
       currentScale = baseScale;
       animationFrame = 0;
@@ -220,14 +407,46 @@
       spinStartScale = baseScale;
       maxMomentumReached = false;
       maxMomentumReachedTime = 0;
+      lockedOverdrive = false;
+      finishingLockedOverdrive = false;
+      lockedLastFrameTime = 0;
+      overdriveStopArmed = false;
+      lastOverdriveTapTime = 0;
+      activeRapidClickWindow = rapidClickWindowTouch;
     }
 
     function spin(time) {
+      if (lockedOverdrive) {
+        const elapsed = lockedLastFrameTime
+          ? Math.min((time - lockedLastFrameTime) / 1000, 0.05)
+          : 0;
+        lockedLastFrameTime = time;
+        currentAngle =
+          (currentAngle + lockedSpinSpeed * elapsed) % baseRotation;
+        currentScale = maxScale;
+        applyTransform(currentAngle, currentScale);
+        updateColorOverlay(time);
+        if (
+          !overdriveStopArmed
+          && time - lastOverdriveTapTime >= overdriveStopArmDelay
+        ) {
+          overdriveStopArmed = true;
+        }
+        animationFrame = requestAnimationFrame(spin);
+        return;
+      }
+
       const progress = getSpinProgress(time);
       currentAngle = spinStartAngle
         + (spinTargetAngle - spinStartAngle) * easeOutCubic(progress);
       currentScale = getScaleAtTime(time);
       applyTransform(currentAngle, currentScale);
+      updateColorOverlay(time);
+
+      if (lockedOverdrive) {
+        animationFrame = requestAnimationFrame(spin);
+        return;
+      }
 
       if (progress >= 1) {
         finishSpin();
@@ -237,7 +456,7 @@
       animationFrame = requestAnimationFrame(spin);
     }
 
-    function animate() {
+    function animate(pointerType = "keyboard") {
       pressCount += 1;
       animation.dataset.visibleImage =
         pressCount % 2 === 0 ? "first" : "second";
@@ -245,8 +464,26 @@
       if (reducedMotion.matches) return;
 
       const pressTime = performance.now();
+      activeRapidClickWindow =
+        pointerType === "mouse" || pointerType === "keyboard"
+          ? rapidClickWindowMouse
+          : rapidClickWindowTouch;
+
+      if (lockedOverdrive) {
+        if (overdriveStopArmed) {
+          beginLockedOverdriveFinish(pressTime);
+        } else {
+          lastOverdriveTapTime = pressTime;
+          overdriveStopArmed = false;
+        }
+        return;
+      }
+
+      if (finishingLockedOverdrive) return;
+
       const isRapidPress =
-        isSpinning && pressTime - lastPressTime <= rapidClickWindow;
+        isSpinning
+        && pressTime - lastPressTime <= activeRapidClickWindow;
 
       if (isSpinning) {
         currentAngle = getCurrentAngle(pressTime);
@@ -269,6 +506,7 @@
           }
         } else {
           rapidMomentumLevel = 0;
+          resetColorOverlay();
         }
       } else {
         currentAngle = 0;
@@ -294,11 +532,13 @@
       animationFrame = requestAnimationFrame(spin);
     }
 
-    animation.addEventListener("click", animate);
+    animation.addEventListener("pointerdown", (event) => {
+      animate(event.pointerType);
+    });
     animation.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        animate();
+        animate("keyboard");
       }
     });
   </script>

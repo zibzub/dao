@@ -58,12 +58,12 @@
     const rapidClickWindowMouse = 420;
     const extraRotationPerRapidClick = 360;
     const extraDurationPerRapidClick = 120;
-    const maxExtraRotations =16;
+    const maxExtraRotations =12;
     const baseScale = 1;
     const maxScale = 1.4;
     const scalePeakProgress = 0.35;
     const scaleGrowDuration = 900;
-    const colorOverlayDelay = 3000;
+    const colorOverlayDelay = 2250;
     const hueCycleDuration = 20000;
     const overlayFadeDuration = 350;
     const overlayMaxOpacity = 0.45;

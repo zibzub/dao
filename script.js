@@ -79,6 +79,7 @@
     const lockedFinishDuration = 1100;
     const overdriveStopArmDelay = 600;
     const baseHueDegreesPerSecond = 360 / (hueCycleDuration / 1000);
+    const baseTrackFilter = "drop-shadow(0 0.4rem 0.45rem rgb(0 0 0 / 65%))";
     const pulseDuration = 180;
     const pulseScaleBoost = 0.15;
     const pulseBrightnessBoost = 0.50;
@@ -156,14 +157,6 @@
       soundEnabled = false;
     }
 
-    function saveSoundPreference() {
-      try {
-        localStorage.setItem("daoSoundEnabled", String(soundEnabled));
-      } catch (error) {
-        console.warn("Unable to save sound preference.", error);
-      }
-    }
-
     function updateSoundToggle() {
       soundToggle.setAttribute("aria-pressed", String(soundEnabled));
       soundToggle.setAttribute(
@@ -237,55 +230,6 @@
       }
     }
 
-    function playSnare() {
-      try {
-        ensureAudioContext();
-
-        const now = audioContext.currentTime;
-        const bufferSize = Math.floor(audioContext.sampleRate * 0.18);
-        const noiseBuffer = audioContext.createBuffer(
-          1,
-          bufferSize,
-          audioContext.sampleRate
-        );
-        const output = noiseBuffer.getChannelData(0);
-
-        for (let index = 0; index < bufferSize; index += 1) {
-          output[index] = Math.random() * 2 - 1;
-        }
-
-        const noise = audioContext.createBufferSource();
-        const noiseFilter = audioContext.createBiquadFilter();
-        const noiseGain = audioContext.createGain();
-        noise.buffer = noiseBuffer;
-        noiseFilter.type = "highpass";
-        noiseFilter.frequency.setValueAtTime(900, now);
-        noiseGain.gain.setValueAtTime(0.45, now);
-        noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
-
-        noise.connect(noiseFilter);
-        noiseFilter.connect(noiseGain);
-        noiseGain.connect(masterGain);
-
-        const body = audioContext.createOscillator();
-        const bodyGain = audioContext.createGain();
-        body.type = "triangle";
-        body.frequency.setValueAtTime(100, now);
-        bodyGain.gain.setValueAtTime(0.18, now);
-        bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
-
-        body.connect(bodyGain);
-        bodyGain.connect(masterGain);
-
-        noise.start(now);
-        noise.stop(now + 0.18);
-        body.start(now);
-        body.stop(now + 0.09);
-      } catch (error) {
-        console.warn("Unable to play snare sound.", error);
-      }
-    }
-
     function playTapSound() {
       if (!soundEnabled) return;
 
@@ -326,8 +270,7 @@
       track.style.transform =
         `rotate(${angle}deg) scale(${pulseScale})`;
       track.style.filter =
-        "drop-shadow(0 0.4rem 0.45rem rgb(0 0 0 / 65%)) "
-        + `brightness(${pulseBrightness})`;
+        `${baseTrackFilter} brightness(${pulseBrightness})`;
     }
 
     function getSpinProgress(time) {
@@ -822,7 +765,6 @@
     document.addEventListener("pointerdown", handleOutsidePointerDown);
     soundToggle.addEventListener("click", () => {
       soundEnabled = !soundEnabled;
-      saveSoundPreference();
       updateSoundToggle();
       if (soundEnabled) {
         primeAudio();
